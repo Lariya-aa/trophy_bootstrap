@@ -1,70 +1,70 @@
-# Trophy Bootstrap Agent 指南
+# Trophy Bootstrap Agent Guide
 
-初始化与文档日期：2026-10-11。版本：0.1.0。默认中文沟通，用户当前明确指令优先。
+Initialization & Documentation Date: 2026-10-11. Version: 0.1.0. User's explicit instructions take precedence.
 
-## 项目范围
+## Project Scope
 
-本项目是运行于 PS Vita SceShell `*main` 的常驻奖杯预热插件。宿主提交 Title ID / NPWR 队列，插件依次启动已安装游戏，由游戏自身初始化个人奖杯 DAT，再结束本轮认领的目标进程并检查配对。
+This project is a resident trophy warm-up / bootstrap plugin running within PS Vita SceShell (`*main`). The host submits a Title ID / NPWR queue, and the plugin sequentially launches installed games. Each game's native executable initializes its own personal trophy DAT files (`TRPTITLE.DAT` and `TRPTRANS.DAT`). The plugin then safely terminates the claimed target process and verifies the presence of the DAT pair.
 
-只维护本项目源码、控制工具和测试。插件不安装游戏，不解锁奖杯，不修改 DAT，不删除奖杯数据库，不自动释放生成记录。没有独立气泡、设备按键入口或开机自动执行功能。
+Only source code, control tooling, and tests belonging to this project are maintained here. The plugin does not install games, does not unlock trophies, does not modify DAT files, does not wipe trophy databases, and does not automatically delete generated records. It does not provide a standalone bubble, device key bindings, or boot-time auto-execution.
 
-首先确认工作目录、Git 根与既存 diff，再根据任务阅读涉及源码。保留既存修改，不自动提交、推送或发布；用户已经明确授权的操作继续完成。
+Always verify the working directory, Git root, and existing diffs before proceeding. Preserve existing modifications; do not commit, push, or release without explicit authorization. Proceed with operations that the user has already explicitly authorized.
 
-## 设备操作约束
+## Device Operation Constraints
 
-文档阅读和整理不授权连接设备、部署、修改配置或执行队列。操作已获授权时，先核对当次设备地址、挂载、源和目标，不沿用历史环境。
+Reading and organizing documentation does not authorize connecting to devices, deploying, modifying configurations, or executing queues. When device operations are authorized, verify the active device address, mount points, sources, and targets; do not rely on historical environments.
 
-部署前读取实际 tai 配置，保存配套备份，并核对候选 diff。在现有 `*main` 段增加 `ur0:tai/trophy_bootstrap.suprx`；已有配置无需重复添加。不删除其他插件行，不替换整个 tai 目录。加载插件需要设备重启，按授权范围执行。
+Before deployment, inspect the actual `tai` configuration file on the device, maintain accompanying backups, and review candidate diffs. Add `ur0:tai/trophy_bootstrap.suprx` under the existing `*main` section; do not add duplicates if already present. Never delete other plugin entries or replace the entire tai directory. Loading the plugin requires a device reboot, executed strictly within the authorized scope.
 
-默认待命，重启不自动恢复旧批次。权限、身份、存储、日志或结束进程错误时停止并保留现场；恢复必须使用当前会话，不能继承旧 PID 归属。禁止重写活动批次的不可变队列或伪造 journal。
+The plugin defaults to an idle standby state; reboots do not automatically resume unfinished batches. On permission, identity, storage, logging, or process termination errors, halt immediately and preserve state. Resumption must use the current session and cannot inherit stale PID ownership. Never rewrite immutable queues of active batches or forge journals.
 
-DAT 配对存在只证明观察到两个非空文件，不能代替明文结构、零进度或获杯资格验证。批次终态必须逐项检查，不以退出码或 error=0 代替验收。
+The existence of a DAT pair only proves that two non-empty files were observed; it does not substitute for plaintext structure verification, zero-progress checks, or trophy qualification validation. Batch completion must be inspected item-by-item; exit codes or `error=0` cannot substitute for per-item acceptance verification.
 
-## 源码职责
+## Source Code Responsibilities
 
-| 文件 | 职责 |
+| File | Responsibility |
 | --- | --- |
-| [bootstrap.c](src/bootstrap.c)、[bootstrap.h](include/bootstrap.h) | 队列解析、状态机、容量、归属、暂停/恢复及结果码 |
-| [plugin.c](src/plugin.c) | SceShell 驻留线程、AppMgr 启停、目录查询、控制文件及日志 |
-| [app_list.c](src/app_list.c) | 从小容量起逐级请求完整运行应用列表，拒绝截断和契约不符 |
-| [app_status.c](src/app_status.c) | 区分启动上下文、已运行游戏和已知系统后台服务 |
-| [sha256.c](src/sha256.c) | 队列及 journal 摘要 |
-| [control.py](tools/control.py) | 电脑本地准备队列、发布控制文件、读取状态；不含 FTP |
-| [build.sh](tools/build.sh)、[verify_plugin.py](tools/verify_plugin.py) | 固定 SDK 构建及 SELF 外层检查 |
+| [src/bootstrap.c](src/bootstrap.c), [include/bootstrap.h](include/bootstrap.h) | Queue parsing, state machine, capacity checking, process ownership, pause/resume, and result codes |
+| [src/plugin.c](src/plugin.c) | SceShell resident thread, AppMgr process control, directory queries, control files, and diagnostics log |
+| [src/app_list.c](src/app_list.c), [include/app_list.h](include/app_list.h) | Progressive running application list queries, rejecting truncated results and contract mismatches |
+| [src/app_status.c](src/app_status.c), [include/app_status.h](include/app_status.h) | Classify startup contexts, running games, and known system background services |
+| [src/sha256.c](src/sha256.c), [include/sha256.h](include/sha256.h) | SHA-256 digest calculations for queues and state journals |
+| [tools/control.py](tools/control.py) | Host-side queue preparation, control command publication, and status inspection; no FTP |
+| [tools/build.sh](tools/build.sh), [tools/verify_plugin.py](tools/verify_plugin.py) | Pinned VitaSDK container build and SELF envelope static validation |
 
-原游戏自己调用奖杯初始化。插件不替游戏创建奖杯上下文，不绕过通信签名，不替换 eboot。每项仅提供 Title ID 和 NPWR；等待、停止和结果检查逻辑共用。
+The original game executable invokes its own trophy initialization. The plugin does not create trophy contexts on behalf of the game, does not bypass communication signatures, and does not modify or replace eboots. Each queue entry provides only a Title ID and NPWR; waiting, stopping, and result verification logic are shared across all entries.
 
-## 状态机
+## State Machine
 
 ```text
 PREFLIGHT → LAUNCH → WAIT_PROCESS → RUN_WINDOW
-→ STOP → WAIT_EXIT → CHECK_PAIR → COOLDOWN → 下一项
+→ STOP → WAIT_EXIT → CHECK_PAIR → COOLDOWN → Next Item
 ```
 
-| 环节 | 条件与上限 |
+| Phase | Conditions & Limits |
 | --- | --- |
-| PREFLIGHT/LAUNCH | 已有配对跳过；其他应用存在时等待；核对安装资源及实时容量；LAUNCH journal 先落盘 |
-| WAIT_PROCESS | started 非零、application_type=1、名字/PID/App ID 与 Shell 列表对应；同一 PID 稳定 1 秒；启动等待最多 30 秒 |
-| RUN_WINDOW | 保持已认领 PID；配对稳定 500 毫秒且运行满 5 秒即可停止，否则到 10/30 秒队列上限；PID 更换不重绑 |
-| STOP | 对目标 PID 与 App ID 再次核对，STOP journal 先落盘，再结束本轮拥有的目标 |
-| WAIT_EXIT | 最多 10 秒确认退出；未知或变化的 PID 不能当作退出 |
-| CHECK_PAIR | 等 1.5 秒，核对两份 DAT 存在且非空，记录逐项结果 |
-| COOLDOWN | 等 1.5 秒，进入下一项 |
-| RECOVER_WAIT | 不继承旧 PID 归属；目标必须缺席，观察 3 秒后检查已出现配对，再跳过或继续 |
+| PREFLIGHT / LAUNCH | Skip if DAT pair already exists; wait if external applications are active; verify installed resources and real-time capacity; flush LAUNCH journal to disk before process invocation |
+| WAIT_PROCESS | AppMgr status has non-zero `started`, `application_type=1`, name/PID/App ID match Shell list; same PID remains stable for 1 second; launch wait timeout is 30 seconds |
+| RUN_WINDOW | Retain claimed PID ownership; stop early if pair is stable for 500 ms and running time reaches 5 seconds, otherwise run until queue limit (10s or 30s); PID changes never rebind |
+| STOP | Re-verify target PID and App ID, flush STOP journal to disk, then terminate the claimed target process |
+| WAIT_EXIT | Up to 10 seconds to confirm process exit; unknown or changing PIDs cannot be treated as exited |
+| CHECK_PAIR | Wait 1.5 seconds, verify both DAT files exist and are non-empty, record item result |
+| COOLDOWN | Wait 1.5 seconds cooldown, then advance to next item |
+| RECOVER_WAIT | Do not inherit stale PID ownership; target must be absent; observe for 3 seconds, check if pair has emerged, then skip or proceed |
 
-`process=0` 表示缺席；`1` 表示可认领的运行游戏；`2` 表示存在但启动中，不能当缺席或认领。负数错误不能按“没有进程”处理。实际延迟还受 Shell 调度影响，日志未逐阶段记录完整时间戳，不据此报告精确生成秒数。
+`process=0` denotes absent; `1` denotes claimable running game; `2` denotes present but starting (cannot be treated as absent or claimed). Negative errors must never be interpreted as "process absent". Actual execution latency is subject to Shell scheduling; logs do not record granular per-phase microsecond timestamps, so exact generation durations should not be inferred.
 
-## 容量及外部应用
+## Capacity and External Applications
 
-最大 100 个队列项、100 组个人登记目录。容量检查按实际个人目录计数，同款 app/patch/rePatch 的可见多个 NPWR 预留多个名额。查询失败不视为空目录；资源/SFO 冲突不自行选一个覆盖。其他组件并发注册组的竞争尚未完整验证。
+Maximum 100 queue items, 100 personal registered directories. Capacity checks count actual personal directories, reserving multiple slots for games where multiple NPWRs are visible across `ux0:app`, `ux0:patch`, and `ux0:rePatch`. Directory query failures are not treated as empty directories; SFO or resource conflicts are not arbitrarily resolved. Concurrency races with other registration components remain unverified.
 
-应用列表从 1 项开始，满额时扩大到 2/4/8/16/32；更大请求失败不能回退采用此前部分列表。最大容量仍满、返回值和输出不一致均报错。
+The running application list query starts at capacity 1, expanding through 2 / 4 / 8 / 16 / 32 when full; higher-capacity query failures never fall back to partial lists. Saturated maximum capacity or disagreement between return value and buffer contents trigger errors.
 
-插件对 `NPXS10063`、`NPXS10079` 仅在完整名字/PID/App ID 核对通过且 type=0 时视为后台服务，不等待或结束它们。其余系统应用及 VitaShell 仍阻挡。PREFLIGHT 中普通占用为等待；RUN 中遇到外部应用时先停止拥有的目标、检查结果，然后暂停整批。启动确认提示可能使 WAIT_PROCESS 超时；已有 DAT 不表示已运行到主菜单或具备正常获杯资格。
+The plugin treats `NPXS10063` and `NPXS10079` as background services only when full name, PID, App ID verification passes and `application_type=0`; it neither waits for nor terminates them. All other system applications and VitaShell block execution. During PREFLIGHT, ordinary foreground occupancy results in waiting; during RUN, encountering external applications causes the plugin to stop its owned target, verify results, and pause the batch. Startup confirmation prompts may cause WAIT_PROCESS to time out; existing DAT files do not imply the game reached the main menu or achieved trophy eligibility.
 
-## 队列与控制
+## Queue and Control Protocol
 
-队列最多 8191 字节、LF 换行，不接受 NUL、CR、重复 Title ID 或重复 NPWR。窗口仅接受下面两种之一；Title ID 为九位大写字母/数字且不能以 NPXS 开头。以下标识为格式占位符。
+Queue files must not exceed 8191 bytes, use LF line endings, and reject NUL bytes, CR characters, duplicate Title IDs, or duplicate NPWRs. Only two window configurations are accepted; Title IDs must be 9 alphanumeric characters not starting with `NPXS`. The following block illustrates the format:
 
 ```text
 TROPHY_BOOTSTRAP_QUEUE_V1
@@ -74,104 +74,104 @@ window_ms=5000,30000
 PCSE00001 NPWR00001_00
 ```
 
-另一窗口为 `window_ms=5000,10000`。新批次使用新 batch 标识。运行和恢复采用 `jobs/<batch>/queue.txt` 不可变副本，不采用后来替换的根 queue.txt。
+The alternative window setting is `window_ms=5000,10000`. New batches must use a distinct 32-hex `batch` identifier. Execution and recovery strictly use the immutable copy at `jobs/<batch>/queue.txt`, never the mutable root `queue.txt`.
 
 ```text
 TROPHY_BOOTSTRAP_COMMAND_V1
-<当前32位十六进制session> <START或RESUME或CANCEL> <队列SHA256>
+<current_32_hex_session> <START|RESUME|CANCEL> <queue_sha256>
 ```
 
-| 命令 | 用途 |
+| Command | Purpose |
 | --- | --- |
-| START | 开始新批次；有活动/未完成批次时拒绝 |
-| RESUME | 恢复匹配已保存队列的未结束批次；清旧归属和暂停错误，检查目标缺席 |
-| CANCEL | 记录取消，按归属检查尝试结束本轮目标，保留已生成文件 |
+| START | Start a new batch; rejected if an active or unfinished batch exists |
+| RESUME | Resume an unfinished batch matching saved queue; clears stale ownership and pause errors, verifies target absence |
+| CANCEL | Record cancellation, attempt to terminate the current target under ownership checks, preserve generated files |
 
-`control.py` 读 ready/status；RESUME/CANCEL 还要读取本地 `jobs/<batch>/queue.txt`。只把 ready/status 下载到电脑不足以生成恢复命令。尚未消费的 command 或 client-pending 拒绝覆盖。FTP 不支持重命名覆盖时，先保留旧文件，再切换已验证候选；不能删除旧批次以完成替换。
+`control.py` inspects `ready.json` and `status.json`; RESUME and CANCEL also require reading the local `jobs/<batch>/queue.txt`. Downloading only `ready.json`/`status.json` to the PC is insufficient to construct a recovery command. Unconsumed commands or client-pending files refuse overwriting. If FTP lacks atomic rename-overwrite, retain existing files and switch via verified candidates; never delete active batch files to perform replacements.
 
-## 持久化和结果
+## Persistence and Results
 
-控制目录为 `ux0:data/trophy_bootstrap/`。
+The device control directory is `ux0:data/trophy_bootstrap/`.
 
-| 文件 | 用途 |
+| File | Purpose |
 | --- | --- |
-| ready.json | 当前启动 session、插件版本；重启生成新 session |
-| status.json | 观察 phase、active、needs_explicit_resume、index/count、error、operation、waiting_for、storage_error |
-| state-0.bin / state-1.bin | 交替 journal，序号及 SHA-256 校验；恢复以有效最新槽为准 |
-| jobs/<batch>/queue.txt | 原批次不可变队列 |
-| jobs/<batch>/result.json | 终态时输出逐项结果；暂停时可能尚不存在 |
-| diagnostic.log | 状态转换、应用身份和错误位置；不记授权或 DAT 内容 |
+| ready.json | Current boot session and plugin version; reboots generate a new session |
+| status.json | Observed phase, active flag, needs_explicit_resume, index/count, error, operation, waiting_for, storage_error |
+| state-0.bin / state-1.bin | Alternating state journals with sequence numbers and SHA-256 checksums; recovery selects the latest valid slot |
+| jobs/<batch>/queue.txt | Immutable copy of the batch queue |
+| jobs/<batch>/result.json | Per-item results published upon reaching terminal state; may not exist while paused |
+| diagnostic.log | State transitions, process identities, and error locations; never logs credentials or DAT contents |
 
-每次转换先写临时文件、同步和回读，再替换对应槽。两槽都无有效数据时拒绝继续。journal 使用 V1 布局，status.error 优先报告负的控制/运行错误，否则显示持久化批次错误。
+Each state transition writes to a temporary file, calls `fsync`, reads back for verification, and then replaces the target slot. If neither slot contains valid data, the plugin refuses to proceed. Journals follow the V1 layout. `status.error` prioritizes reporting negative control/runtime errors, falling back to persisted batch errors.
 
-| 逐项结果 | 含义 |
+| Item Result | Meaning |
 | --- | --- |
-| existing_skipped | 处理时已存在非空配对，跳过 |
-| pair_generated_waiting_decrypted_export | 退出后观察到非空配对 |
-| pair_recovered_waiting_decrypted_export | 暂停恢复时观察到已有配对 |
-| missing_pair / incomplete_pair | 配对缺失 / 不完整，不能当成功 |
-| launch_failed / cancelled / pending | 启动失败 / 取消 / 尚未处理 |
+| existing_skipped | Non-empty pair already existed prior to launch; skipped |
+| pair_generated_waiting_decrypted_export | Non-empty pair observed after game exit |
+| pair_recovered_waiting_decrypted_export | Existing pair observed during pause recovery |
+| missing_pair / incomplete_pair | Pair missing or incomplete; cannot be treated as success |
+| launch_failed / cancelled / pending | Launch failed / cancelled / pending processing |
 
-`BATCH_GENERATED` 仅表示全队列已处理；可包含 missing_pair。`PAUSED` 保留当前位置和现场，恢复可能在当前项，也可能已推进到下一项，必须看 index 和结果。error=0 不能替代逐项成功判定。
+`BATCH_GENERATED` merely indicates all queue entries were processed; it may contain `missing_pair` items. `PAUSED` preserves the current progress and context; resumption may restart the current entry or advance to the next, depending on the index and results. `error=0` cannot substitute for individual success verification.
 
-| 内部错误 | 十进制 | 含义 |
+| Internal Error | Decimal | Meaning |
 | --- | --- | --- |
-| TB_ERROR | -29697 | 输入或通用契约错误 |
-| TB_BUSY | -29698 | 目标或其他应用占用 |
-| TB_CAPACITY | -29699 | 容量不足 |
-| TB_IDENTITY | -29700 | 进程/队列/身份不一致 |
-| TB_TIMEOUT | -29701 | 启动或退出观察超时 |
-| TB_STORAGE | -29702 | 持久化失败 |
+| TB_ERROR | -29697 | Invalid input or contract error |
+| TB_BUSY | -29698 | Target or external application occupancy |
+| TB_CAPACITY | -29699 | Insufficient capacity |
+| TB_IDENTITY | -29700 | Process, queue, or identity mismatch |
+| TB_TIMEOUT | -29701 | Launch or exit observation timeout |
+| TB_STORAGE | -29702 | Persistence / I/O failure |
 
-系统 API 错误可能为其他负数，结合 operation 定位，不按上述内部码替换解释。
+System API errors may yield other negative values; refer to `operation` for diagnostics rather than mapping them to internal codes.
 
-## 宿主控制工具
+## Host Control Tooling
 
-`tools/control.py` 只处理电脑可访问的本地目录或挂载路径，不自行连接 FTP、上传或安装游戏。
+`tools/control.py` operates exclusively on local directories or mounts accessible to the PC; it does not connect to FTP, upload files, or install games.
 
-1. 核对完整 catalog、实际安装 SFO/奖杯资源映射、已有个人配对与可用容量，准备新批次。
-2. 将队列放入设备 `ux0:data/trophy_bootstrap/queue.txt`，基于当前 ready/status 会话发布 START。
-3. 核对命令已消费、active=true；停止 FTP/USB，并在 LiveArea 彻底关闭 VitaShell，让插件处理队列。
-4. 结束或暂停后重新连接，读取 status、journal、不可变队列与逐项结果，回读实际 DAT 配对。恢复前核对当前位置和目标运行状态。
+1. Verify complete catalog, actual installed SFO / trophy resource mappings, existing personal pairs, and available capacity before preparing a new batch.
+2. Place the generated queue into `ux0:data/trophy_bootstrap/queue.txt`, and issue `START` based on the active ready/status session.
+3. Confirm the command was consumed and `active=true`; terminate FTP/USB connections, and completely close VitaShell from LiveArea so the plugin can process the queue.
+4. After completion or pause, reconnect, read `status.json`, journals, immutable queue, and `result.json`, then verify actual DAT pairs. Inspect current position and target execution status before resuming.
 
-以下命令中的路径是占位符，确认实际目标与副作用后执行：
+Example commands (paths are placeholders; verify targets and side effects before execution):
 
 ```sh
-python3 tools/control.py prepare --catalog /路径/catalog.json --output /路径/新批次 --limit 10 --user 00 --max-run-ms 30000
-python3 tools/control.py command START --root /路径/设备data/trophy_bootstrap
-python3 tools/control.py status --root /路径/设备data/trophy_bootstrap
-python3 tools/control.py command RESUME --root /路径/设备data/trophy_bootstrap
-python3 tools/control.py command CANCEL --root /路径/设备data/trophy_bootstrap
+python3 tools/control.py prepare --catalog /path/to/catalog.json --output /path/to/new_batch --limit 10 --user 00 --max-run-ms 30000
+python3 tools/control.py command START --root /path/to/device/data/trophy_bootstrap
+python3 tools/control.py status --root /path/to/device/data/trophy_bootstrap
+python3 tools/control.py command RESUME --root /path/to/device/data/trophy_bootstrap
+python3 tools/control.py command CANCEL --root /path/to/device/data/trophy_bootstrap
 ```
 
-## 构建与验证
+## Build and Verification
 
 ```sh
 sh tools/test.sh
 python3 tests/test_control.py
 python3 tests/test_vita_format.py
 sh tools/build.sh
-python3 tools/verify_plugin.py /绝对路径/trophy_bootstrap.suprx
+python3 tools/verify_plugin.py /absolute/path/to/trophy_bootstrap.suprx
 ```
 
-按实际变更选择检查。文档修改只查链接、内容和 diff，不运行设备任务或编译。队列、进程归属、容量、取消和故障恢复修改运行相关合成检查；SDK 构建与 SELF 检查不能替代设备验证。
+Select checks according to actual modifications. Documentation edits only verify links, content, and diffs without running device tasks or builds. Changes to queues, process ownership, capacity, cancellation, or recovery must run relevant synthetic checks; VitaSDK builds and SELF envelope checks cannot substitute for on-device validation.
 
-`tools/build.sh` 使用固定摘要的 VitaSDK 镜像：源码只读、容器断网，输出到宿主临时目录。构建制品放入被忽略的 `artifacts/`。
+`tools/build.sh` uses a pinned-digest VitaSDK Docker image: read-only source mount, disabled container networking, output directed to host temporary directories. Build artifacts belong in ignored `artifacts/`.
 
-固定 SDK 的 libk 可变参数存在 ARM 64 位对齐差异；日志中的 64 位数拆成两个 32 位十六进制值，不能重新引入混合 `%llu` 调用。格式回归由 `tests/test_vita_format.py` 检查。
+Pinned SDK libk `va_arg` exhibits ARM 64-bit word-alignment discrepancies; 64-bit integers in log formatting are split into two 32-bit hexadecimal values and must never be reintroduced as mixed `%llu` format strings. Format regressions are verified by `tests/test_vita_format.py`.
 
-本仓库初始化后没有构建或实机验收记录。完成报告明确区分静态、合成、构建和实机证据，简明列出实际变化、完成检查与未验证边界。
+No build or on-device validation records exist prior to repository initialization. Completion reports must explicitly distinguish between static, synthetic, build, and hardware evidence, clearly detailing actual changes, completed checks, and unverified boundaries.
 
-## 私人数据
+## Private Data
 
-实际账号、授权、DAT、私人队列、设备配置和研究日志不进入版本控制。工作现场及验证证据放入被忽略的 `local/`，按 NPWR 区分已生成、原有和缺失；新增设备结果必须有对应回读证据。不覆盖旧备份，不随任务清理设备数据。
+Actual accounts, credentials, DAT files, private queues, device configurations, and research logs must never enter version control. Working artifacts and verification evidence belong in the ignored `local/` directory, categorized by NPWR into generated, pre-existing, and missing. New device results must be backed by corresponding readback evidence. Never overwrite historical backups or clean device data during routine tasks.
 
-## 许可证与源码来源
+## License and Provenance
 
-本项目使用 GPL-3.0-or-later，许可证全文见 [LICENSE](LICENSE)，源码中的 SPDX 标识保留。
+This project is licensed under GPL-3.0-or-later; see [LICENSE](LICENSE) for the full text. SPDX identifiers in source files must be preserved.
 
-`src/sha256.c` 与 `include/sha256.h` 改编自 GPL-3.0-or-later 源码基线 `63acbc8d8051ad1407fc88e8790edf4632f56618`，修改为常驻插件构建选择 libk 头文件。
+`src/sha256.c` and `include/sha256.h` are adapted from GPL-3.0-or-later baseline `63acbc8d8051ad1407fc88e8790edf4632f56618`, modified for resident plugin compilation against libk headers.
 
-固定 VitaSDK 构建链接 libk（PDCLib 公有领域 C 库）及 GCC 编译支持例程。本项目不分发完整工具链，工具链依赖的上游许可仍适用。
+Pinned VitaSDK builds link against libk (PDCLib public domain C library) and GCC compiler support routines. This repository does not distribute the full toolchain; upstream licenses governing toolchain dependencies remain in effect.
 
-`include/app_status.h` 的 AppMgr 状态契约独立表示自 VitaSDK 面向 FW 3.60 的 API 布局：<https://github.com/vitasdk/vita-headers/blob/master/include/psp2/appmgr.h>。固定 SDK 提供状态导入桩，但缺少带类型的声明。没有复制固件二进制、游戏代码或签名材料。
+AppMgr status contracts in `include/app_status.h` are independently represented based on VitaSDK FW 3.60 API layouts (<https://github.com/vitasdk/vita-headers/blob/master/include/psp2/appmgr.h>). The pinned SDK supplies import stubs but lacks typed declarations. No firmware binaries, game code, or cryptographic signing materials are reproduced.
